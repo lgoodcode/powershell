@@ -55,20 +55,16 @@ while ($CONTINUE -eq 0) {
         }
 
         Write-Host 'Testing computer(s) network status...'
+
         $online =  $computers | ForEach-Object { Test-Connection $_ -Count 1 -AsJob } | Wait-Job | Receive-Job | ForEach-Object {[PSCustomObject]@{
             Computer = $_.Address
             Online = $(if ($_.StatusCode -eq 0) { $true } else { $false })
+            User = $null
         }}
 
         Write-Host 'Querying computer(s)...'
 
         $queries = $online | ForEach-Object {
-            $data = [PSCustomObject]@{
-                Computer = $_.Computer
-                Online = $_.Online
-                User = $null
-            }    
-
             if ($_.Online) {
                 # Run the command to check active session and sends the error, if any, to null
                 # since it will be manually handled to include the computer name that failed.
@@ -85,9 +81,9 @@ while ($CONTINUE -eq 0) {
                             # We want to find the username in the second column word but, console 
                             # and rdp will also match so we explicitly omit it from capture.
                             if (-not ($line -match '(?<= {1,})(?!console|rdp)[a-z\d]+')) {
-                                $data.User = 'Error'
+                                $_.User = 'Error'
                             } else {
-                                $data.User = $matches[0]
+                                $_.User = $matches[0]
                             }
                             break
                         }
@@ -95,7 +91,7 @@ while ($CONTINUE -eq 0) {
                 }
             }
 
-            return $data
+            return $_
         }
         
         Write-Output $queries | Format-Table -AutoSize
