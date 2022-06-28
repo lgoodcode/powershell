@@ -54,77 +54,52 @@ while ($CONTINUE -eq 0) {
             $computers = @($computers)
         }
 
-        Write-Host 'Determining computer(s) network status...'
-        # # Create a fixed length array to store custom objects of results
-        # $online = @(0..$($computers.count-1))
+        Write-Host 'Testing computer(s) network status...'
+        $online =  $computers | ForEach-Object { Test-Connection $_ -Count 1 -AsJob } | Wait-Job | Receive-Job | ForEach-Object {[PSCustomObject]@{
+            Computer = $_.Address
+            Online = $(if ($_.StatusCode -eq 0) { $true } else { $false })
+        }}
 
-        # for ($i = 0; $i -lt $computers.count; $i++) {
-        #     $percent = [int](($i / $computers.count) * 100)
-        #     Write-Progress -Activity 'Testing Network Connection(s)' -Status "$percent complete | Pinging computer $($computers[$i])"
-        #     $online[$i] = Test-Connection $($computers[$i]) -Count 1 -Quiet
-        # }
-        # Write-Progress -Activity 'Testing Network Connection(s)' -Status 'Done' -Completed
-        $test =  $computers | ForEach-Object { 
-            Start-Job -ScriptBlock {
-                Test-Connection $_ -Count 1
+        Write-Host 'Querying computer(s)...'
+
+        $queries = $online | ForEach-Object {
+            $data = [PSCustomObject]@{
+                Computer = $_.Computer
+                Online = $_.Online
+                User = $null
+            }    
+
+            if ($_.Online) {
+                # Run the command to check active session and sends the error, if any, to null
+                # since it will be manually handled to include the computer name that failed.
+                $result = qwinsta /SERVER:$($_.Computer) 2>$null
+
+                # If query failed
+                if (-not $?) {
+                    Write-Host "Failed to connect to $($_.Computer)"
+                # Otherwise, perform query
+                } else {
+                    # qwinsta returns a string so we need to split it and parse each line
+                    foreach ($line in $result.split([Environment]::NewLine)) {
+                        if (($line -match 'Active') -eq $true) {
+                            # We want to find the username in the second column word but, console 
+                            # and rdp will also match so we explicitly omit it from capture.
+                            if (-not ($line -match '(?<= {1,})(?!console|rdp)[a-z\d]+')) {
+                                $data.User = 'Error'
+                            } else {
+                                $data.User = $matches[0]
+                            }
+                            break
+                        }
+                    }
+                }
             }
+
+            return $data
         }
-
-        Wait-Job $test
-
-        Write-Output $test
-        # # Create a fixed length array to store custom objects of results
-        # $results = @(0..$($computers.count-1))
-
-        # Write-Host 'Querying computer(s)...'
-        # for ($i = 0; $i -lt $computers.count; $i++) {
-        #     $percent = [int](($i / $computers.count) * 100)
-
-        #     # Set custom object to default to offline result
-        #     $results[$i] = [PSCustomObject]@{
-        #         ComputerName = $computers[$i]
-        #         Online = $online[$i]
-        #         LoggedIn = $false
-        #         Username = ''
-        #     }         
-
-        #     Write-Progress -Activity 'Querying Computer(s)' -Status "$percent complete | Querying computer $($computers[$i])"
-
-        #     if ($online[$i] -eq $true) {
-        #         # Run the command to check active session and sends the error, if any, to null
-        #         # since it will be manually handled to include the computer name that failed.
-        #         $result = qwinsta /SERVER:$($computers[$i]) 2>$null
-
-        #         # If query failed
-        #         if (-not $?) {
-        #             Write-Host "Failed to connect to $($computers[$i])"
-        #         # Otherwise, perform query
-        #         } else {
-        #             # qwinsta returns a string so we need to split it and parse each line
-        #             foreach ($line in $result.split([Environment]::NewLine)) {
-        #                 if (($line -match 'Active') -eq $true) {
-        #                     $results[$i].LoggedIn = $true
-
-        #                     # We want to find the username in the second column word but, console 
-        #                     # and rdp will also match so we explicitly omit it from capture.
-        #                     if (-not ($line -match '(?<= {1,})(?!console|rdp)[a-z\d]+')) {
-        #                         $results[$i].Username = 'Error'
-        #                     } else {
-        #                         $results[$i].Username = $matches[0]
-        #                     }
-        #                     break
-        #                 }
-        #             }
-        #         }
-        #     }
-
-        # }
-        # Write-Progress -Activity 'Querying Computer(s)' -Status 'Done' -Completed
-
-        # Write-Output $results | Format-Table -AutoSize
+        
+        Write-Output $queries | Format-Table -AutoSize
     }
 
-    # $CONTINUE = $host.UI.PromptForChoice(' ', 'Query another computer or room?', $CHOICES, 1)
-
-    $CONTINUE = 1
+    $CONTINUE = $host.UI.PromptForChoice(' ', 'Query another computer or room?', $CHOICES, 1)
 }
