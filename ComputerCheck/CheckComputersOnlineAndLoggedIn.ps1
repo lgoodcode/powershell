@@ -16,7 +16,7 @@ while ($CONTINUE -eq 0) {
     # Will contain the results of the testing so it can be used to output to a file if desired
     $queries = $null
 
-    if (-not ($query -imatch '^(\d\d|id\d{5}|\d{5}[a-fA-F]?|[PpSs](\d|\d{4}))(-\d\d-\d{5})?$')) {
+    if (-not ($query -imatch '^(\d\d|id\d{5}|\d{5}[a-fA-F]?|[PpSs](\d|\d{4}))(-(\d\d|TW)-\d{5})?$')) {
         Write-Host 'Must enter a valid room or computer name'
         continue
     } else {
